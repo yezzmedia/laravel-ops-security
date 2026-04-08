@@ -1,0 +1,78 @@
+<?php
+
+declare(strict_types=1);
+
+use YezzMedia\Foundation\Data\InstallContext;
+use YezzMedia\OpsSecurity\Install\EnsureOpsSecurityVisibilityStoreReadyInstallStep;
+use YezzMedia\OpsSecurity\Support\OpsSecurityVisibilityStoreSetup;
+
+function fakeOpsSecurityVisibilityStoreSetup(
+    bool $ready = false,
+    bool $partial = false,
+    bool $migrationSucceeds = true,
+): OpsSecurityVisibilityStoreSetup {
+    return new class($ready, $partial, $migrationSucceeds) extends OpsSecurityVisibilityStoreSetup
+    {
+        /** @var array<int, string> */
+        public array $calls = [];
+
+        public function __construct(
+            private bool $ready,
+            private bool $partial,
+            private bool $migrationSucceeds,
+        ) {}
+
+        public function hasPartialTables(): bool
+        {
+            return $this->partial;
+        }
+
+        public function storeReady(): bool
+        {
+            return $this->ready;
+        }
+
+        public function runMigrations(): void
+        {
+            $this->calls[] = 'run_migrations';
+
+            if ($this->migrationSucceeds) {
+                $this->ready = true;
+                $this->partial = false;
+            }
+        }
+    };
+}
+
+it('requires explicit migration permission before ensuring the visibility store', function (): void {
+    $setup = fakeOpsSecurityVisibilityStoreSetup(ready: false);
+    $step = new EnsureOpsSecurityVisibilityStoreReadyInstallStep($setup);
+
+    expect(fn () => $step->handle(new InstallContext))
+        ->toThrow(RuntimeException::class, 'The ops-security visibility store is not ready');
+});
+
+it('runs migrations when the visibility store is not ready and migrations are allowed', function (): void {
+    $setup = fakeOpsSecurityVisibilityStoreSetup(ready: false);
+    $step = new EnsureOpsSecurityVisibilityStoreReadyInstallStep($setup);
+
+    $step->handle(new InstallContext(allowMigrations: true));
+
+    expect($setup->calls)->toBe(['run_migrations'])
+        ->and($setup->storeReady())->toBeTrue();
+});
+
+it('rejects partially installed visibility tables', function (): void {
+    $setup = fakeOpsSecurityVisibilityStoreSetup(ready: false, partial: true);
+    $step = new EnsureOpsSecurityVisibilityStoreReadyInstallStep($setup);
+
+    expect(fn () => $step->handle(new InstallContext(allowMigrations: true)))
+        ->toThrow(RuntimeException::class, 'The ops-security visibility store is only partially installed');
+});
+
+it('skips the ensure step when the visibility store is already ready', function (): void {
+    $setup = fakeOpsSecurityVisibilityStoreSetup(ready: true);
+    $step = new EnsureOpsSecurityVisibilityStoreReadyInstallStep($setup);
+
+    expect($step->shouldRun(new InstallContext))->toBeFalse();
+});
