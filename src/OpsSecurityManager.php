@@ -21,6 +21,7 @@ use YezzMedia\OpsSecurity\Data\SecurityPostureSummary;
 use YezzMedia\OpsSecurity\Data\SecurityVisibilitySummary;
 use YezzMedia\OpsSecurity\Enums\SecurityDomain;
 use YezzMedia\OpsSecurity\Enums\SecurityPostureStatus;
+use YezzMedia\OpsSecurity\Support\DatabaseSecurityRequestBroker;
 use YezzMedia\OpsSecurity\Support\SecurityPostureSummaryBuilder;
 
 class OpsSecurityManager
@@ -229,6 +230,10 @@ class OpsSecurityManager
 
     public function visibility(): SecurityVisibilitySummary
     {
+        if ($this->requestBroker instanceof DatabaseSecurityRequestBroker) {
+            return $this->requestBroker->visibilitySummary($this->visibilityDisplayLimit);
+        }
+
         $records = $this->visibilityRecords();
         $requests = $records['requests'];
         $decisions = $records['decisions'];
@@ -567,17 +572,24 @@ class OpsSecurityManager
             ];
         }
 
-        $records = $this->visibilityRecords();
+        if ($this->requestBroker instanceof DatabaseSecurityRequestBroker) {
+            $counts = $this->requestBroker->visibilityCountsFor('privileged_mfa', 'super-admin');
 
-        $runtimeEvidenceCount = count(array_filter(
-            $records['runtimeEvidence'],
-            static fn ($evidence): bool => $evidence->control === 'privileged_mfa' && $evidence->scope === 'super-admin',
-        ));
+            $runtimeEvidenceCount = $counts['runtimeEvidence'];
+            $requestCount = $counts['requests'];
+        } else {
+            $records = $this->visibilityRecords();
 
-        $requestCount = count(array_filter(
-            $records['requests'],
-            static fn ($request): bool => $request->control === 'privileged_mfa' && $request->scope === 'super-admin',
-        ));
+            $runtimeEvidenceCount = count(array_filter(
+                $records['runtimeEvidence'],
+                static fn ($evidence): bool => $evidence->control === 'privileged_mfa' && $evidence->scope === 'super-admin',
+            ));
+
+            $requestCount = count(array_filter(
+                $records['requests'],
+                static fn ($request): bool => $request->control === 'privileged_mfa' && $request->scope === 'super-admin',
+            ));
+        }
 
         if ($runtimeEvidenceCount > 0) {
             return [
