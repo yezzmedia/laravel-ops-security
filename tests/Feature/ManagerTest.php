@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use Carbon\CarbonImmutable;
+use Illuminate\Contracts\Cache\Factory;
 use Illuminate\Support\Facades\DB;
 use YezzMedia\Foundation\Data\SecurityRequestDefinition;
 use YezzMedia\Foundation\Data\SecurityRequirementDefinition;
@@ -17,6 +18,7 @@ use YezzMedia\OpsSecurity\Enums\SecurityDomain;
 use YezzMedia\OpsSecurity\Enums\SecurityPostureStatus;
 use YezzMedia\OpsSecurity\OpsSecurityManager;
 use YezzMedia\OpsSecurity\Support\OpsSecurityVisibilityStoreSetup;
+use YezzMedia\OpsSecurity\Support\SecurityPostureSummaryBuilder;
 
 it('produces a security posture summary', function (): void {
     $manager = app(OpsSecurityManager::class);
@@ -269,4 +271,63 @@ it('reuses a single visibility snapshot across governance and visibility reads',
         ->and($queries->filter(fn (string $query): bool => str_contains($query, 'from "ops_security_requests"'))->count())->toBe(1)
         ->and($queries->filter(fn (string $query): bool => str_contains($query, 'from "ops_security_decisions"'))->count())->toBe(1)
         ->and($queries->filter(fn (string $query): bool => str_contains($query, 'from "ops_security_runtime_evidence"'))->count())->toBe(1);
+});
+
+it('memoizes governance results across repeated governance reads', function (): void {
+    $securityRequests = Mockery::mock(SecurityRequestRegistry::class);
+    $securityRequirements = Mockery::mock(SecurityRequirementRegistry::class);
+
+    $securityRequests->shouldReceive('all')
+        ->once()
+        ->andReturn(collect([
+            new SecurityRequestDefinition(
+                key: 'test.request.auth.session-hardening',
+                package: 'yezzmedia/test-package',
+                domain: 'auth',
+                control: 'session_hardening',
+                scope: 'ops-panel',
+                requestedLevel: 'recommended',
+                requestedEnforcementMode: 'observe_only',
+                description: 'Test request for governance memoization.',
+            ),
+        ]));
+
+    $securityRequirements->shouldReceive('all')
+        ->once()
+        ->andReturn(collect([
+            new SecurityRequirementDefinition(
+                key: 'test.auth.session-hardening',
+                package: 'yezzmedia/test-package',
+                domain: 'auth',
+                control: 'session_hardening',
+                level: 'recommended',
+                scope: 'ops-panel',
+                description: 'Test requirement for governance memoization.',
+                enforcementMode: 'observe_only',
+            ),
+        ]));
+
+    $manager = new OpsSecurityManager(
+        resolvers: [],
+        summaryBuilder: app(SecurityPostureSummaryBuilder::class),
+        securityRequests: $securityRequests,
+        securityRequirements: $securityRequirements,
+        requestBroker: app(SecurityRequestBroker::class),
+        cacheFactory: app(Factory::class),
+        cacheEnabled: false,
+        cacheStore: null,
+        cacheTtl: 300,
+        visibilityDisplayLimit: 25,
+    );
+
+    $first = $manager->governance();
+    $control = $manager->governanceControl('auth', 'session_hardening', 'ops-panel');
+    $second = $manager->governance();
+
+    expect($first)
+        ->toBeInstanceOf(SecurityGovernanceSummary::class)
+        ->and($second)->toBe($first)
+        ->and($control)->not->toBeNull()
+        ->and($control->verificationStatus)->toBe('observed')
+        ->and($control->verificationSummary)->toContain('no runtime verification strategy is registered yet');
 });

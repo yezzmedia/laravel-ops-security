@@ -29,6 +29,8 @@ class OpsSecurityManager
 
     private ?SecurityPostureSummary $memo = null;
 
+    private ?SecurityGovernanceSummary $governanceMemo = null;
+
     private ?CacheRepository $cache = null;
 
     /**
@@ -79,6 +81,7 @@ class OpsSecurityManager
     public function refresh(): SecurityPostureSummary
     {
         $this->memo = null;
+        $this->governanceMemo = null;
 
         if ($this->cacheEnabled) {
             $this->resolveCache()->forget(self::CACHE_KEY);
@@ -132,6 +135,10 @@ class OpsSecurityManager
 
     public function governance(): SecurityGovernanceSummary
     {
+        if ($this->governanceMemo !== null) {
+            return $this->governanceMemo;
+        }
+
         /** @var array<int, SecurityRequestDefinition> $requests */
         $requests = $this->securityRequests
             ->all()
@@ -193,7 +200,7 @@ class OpsSecurityManager
             ->values()
             ->all();
 
-        return new SecurityGovernanceSummary(
+        return $this->governanceMemo = new SecurityGovernanceSummary(
             requestsByPackage: $requestsByPackage,
             requirementsByPackage: $requirementsByPackage,
             effectiveControls: $effectiveControls,
