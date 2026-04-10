@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use Carbon\CarbonImmutable;
+use Illuminate\Contracts\Cache\Factory;
 use Illuminate\Support\Facades\DB;
 use YezzMedia\Foundation\Data\SecurityRequestDefinition;
 use YezzMedia\Foundation\Data\SecurityRequirementDefinition;
@@ -16,7 +17,9 @@ use YezzMedia\OpsSecurity\Data\SecurityVisibilitySummary;
 use YezzMedia\OpsSecurity\Enums\SecurityDomain;
 use YezzMedia\OpsSecurity\Enums\SecurityPostureStatus;
 use YezzMedia\OpsSecurity\OpsSecurityManager;
+use YezzMedia\OpsSecurity\Support\DatabaseSecurityRequestBroker;
 use YezzMedia\OpsSecurity\Support\OpsSecurityVisibilityStoreSetup;
+use YezzMedia\OpsSecurity\Support\SecurityPostureSummaryBuilder;
 
 it('produces a security posture summary', function (): void {
     $manager = app(OpsSecurityManager::class);
@@ -266,7 +269,162 @@ it('reuses a single visibility snapshot across governance and visibility reads',
     expect($queries->filter(fn (string $query): bool => str_contains($query, "name = 'ops_security_requests'") && str_contains($query, 'sqlite_master'))->count())->toBeLessThanOrEqual(1)
         ->and($queries->filter(fn (string $query): bool => str_contains($query, "name = 'ops_security_decisions'") && str_contains($query, 'sqlite_master'))->count())->toBeLessThanOrEqual(1)
         ->and($queries->filter(fn (string $query): bool => str_contains($query, "name = 'ops_security_runtime_evidence'") && str_contains($query, 'sqlite_master'))->count())->toBeLessThanOrEqual(1)
-        ->and($queries->filter(fn (string $query): bool => str_contains($query, 'from "ops_security_requests"'))->count())->toBe(1)
-        ->and($queries->filter(fn (string $query): bool => str_contains($query, 'from "ops_security_decisions"'))->count())->toBe(1)
-        ->and($queries->filter(fn (string $query): bool => str_contains($query, 'from "ops_security_runtime_evidence"'))->count())->toBe(1);
+        ->and($queries->filter(fn (string $query): bool => str_contains($query, 'from "ops_security_requests"') && str_contains($query, 'limit 25'))->count())->toBe(1)
+        ->and($queries->filter(fn (string $query): bool => str_contains($query, 'from "ops_security_decisions"') && str_contains($query, 'limit 25'))->count())->toBe(1)
+        ->and($queries->filter(fn (string $query): bool => str_contains($query, 'from "ops_security_runtime_evidence"') && str_contains($query, 'limit 25'))->count())->toBe(1)
+        ->and($queries->filter(fn (string $query): bool => str_contains($query, 'count(*) as aggregate') && str_contains($query, 'from "ops_security_requests"'))->count())->toBe(2)
+        ->and($queries->filter(fn (string $query): bool => str_contains($query, 'count(*) as aggregate') && str_contains($query, 'from "ops_security_decisions"'))->count())->toBe(2)
+        ->and($queries->filter(fn (string $query): bool => str_contains($query, 'count(*) as aggregate') && str_contains($query, 'from "ops_security_runtime_evidence"'))->count())->toBe(2);
+});
+
+it('loads limited visibility rows while preserving full counts', function (): void {
+    config()->set('ops-security.visibility.display_limit', 10);
+
+    /** @var DatabaseSecurityRequestBroker $broker */
+    $broker = app(SecurityRequestBroker::class);
+
+    foreach (range(1, 60) as $index) {
+        $broker->submit('ops-security.request.auth.login-throttle', [
+            'guard' => 'web',
+            'index' => $index,
+        ]);
+
+        $broker->recordRuntimeUsage('ops-security.request.auth.login-throttle', [
+            'guard' => 'web',
+            'index' => $index,
+        ]);
+    }
+
+    DB::flushQueryLog();
+    DB::enableQueryLog();
+
+    $visibility = app(OpsSecurityManager::class)->visibility();
+
+    $queries = collect(DB::getQueryLog())->pluck('query');
+
+    expect($visibility)->toBeInstanceOf(SecurityVisibilitySummary::class)
+        ->and($visibility->requestCount)->toBe(60)
+        ->and($visibility->decisionCount)->toBe(60)
+        ->and($visibility->runtimeEvidenceCount)->toBe(60)
+        ->and($visibility->requestDisplayCount)->toBe(10)
+        ->and($visibility->decisionDisplayCount)->toBe(10)
+        ->and($visibility->runtimeEvidenceDisplayCount)->toBe(10)
+        ->and(count($visibility->requests))->toBe(10)
+        ->and(count($visibility->decisions))->toBe(10)
+        ->and(count($visibility->runtimeEvidence))->toBe(10)
+        ->and($queries->filter(fn (string $query): bool => str_contains($query, 'from "ops_security_requests"') && str_contains($query, 'limit 10'))->count())->toBe(1)
+        ->and($queries->filter(fn (string $query): bool => str_contains($query, 'from "ops_security_decisions"') && str_contains($query, 'limit 10'))->count())->toBe(1)
+        ->and($queries->filter(fn (string $query): bool => str_contains($query, 'from "ops_security_runtime_evidence"') && str_contains($query, 'limit 10'))->count())->toBe(1)
+        ->and($queries->filter(fn (string $query): bool => str_contains($query, 'count(*) as aggregate') && str_contains($query, 'from "ops_security_requests"'))->count())->toBe(1)
+        ->and($queries->filter(fn (string $query): bool => str_contains($query, 'count(*) as aggregate') && str_contains($query, 'from "ops_security_decisions"'))->count())->toBe(2)
+        ->and($queries->filter(fn (string $query): bool => str_contains($query, 'count(*) as aggregate') && str_contains($query, 'from "ops_security_runtime_evidence"'))->count())->toBe(1);
+});
+
+it('verifies privileged mfa through filtered visibility counts instead of full history loads', function (): void {
+    app(SecurityRequestRegistry::class)->register(new SecurityRequestDefinition(
+        key: 'access.request.identity.privileged-mfa',
+        package: 'yezzmedia/laravel-access',
+        domain: 'identity',
+        control: 'privileged_mfa',
+        scope: 'super-admin',
+        requestedLevel: 'required',
+        requestedEnforcementMode: 'observe_only',
+        description: 'Access producer visibility request.',
+    ));
+
+    app(SecurityRequirementRegistry::class)->register(new SecurityRequirementDefinition(
+        key: 'access.identity.privileged-mfa',
+        package: 'yezzmedia/laravel-access',
+        domain: 'identity',
+        control: 'privileged_mfa',
+        level: 'required',
+        scope: 'super-admin',
+        description: 'Access producer visibility requirement.',
+        enforcementMode: 'observe_only',
+    ));
+
+    $broker = app(SecurityRequestBroker::class);
+
+    foreach (range(1, 50) as $index) {
+        $broker->submit('ops-security.request.auth.login-throttle', [
+            'guard' => 'web',
+            'index' => $index,
+        ]);
+    }
+
+    $broker->submit('access.request.identity.privileged-mfa', ['role' => 'super-admin']);
+    $broker->recordRuntimeUsage('access.request.identity.privileged-mfa', ['role' => 'super-admin']);
+
+    DB::flushQueryLog();
+    DB::enableQueryLog();
+
+    $control = app(OpsSecurityManager::class)->governanceControl('identity', 'privileged_mfa', 'super-admin');
+
+    $queries = collect(DB::getQueryLog())->pluck('query');
+
+    expect($control)->not->toBeNull()
+        ->and($control->verificationStatus)->toBe('verified')
+        ->and($queries->filter(fn (string $query): bool => str_contains($query, 'from "ops_security_requests"') && str_contains($query, 'limit'))->count())->toBe(0)
+        ->and($queries->filter(fn (string $query): bool => str_contains($query, 'from "ops_security_runtime_evidence"') && str_contains($query, 'limit'))->count())->toBe(0)
+        ->and($queries->filter(fn (string $query): bool => str_contains($query, 'count(*) as aggregate') && str_contains($query, 'from "ops_security_requests"') && str_contains($query, '"control" = ?') && str_contains($query, '"scope" = ?'))->count())->toBe(1)
+        ->and($queries->filter(fn (string $query): bool => str_contains($query, 'count(*) as aggregate') && str_contains($query, 'from "ops_security_runtime_evidence"') && str_contains($query, '"control" = ?') && str_contains($query, '"scope" = ?'))->count())->toBe(1);
+});
+
+it('memoizes governance results across repeated governance reads', function (): void {
+    $securityRequests = Mockery::mock(SecurityRequestRegistry::class);
+    $securityRequirements = Mockery::mock(SecurityRequirementRegistry::class);
+
+    $securityRequests->shouldReceive('all')
+        ->once()
+        ->andReturn(collect([
+            new SecurityRequestDefinition(
+                key: 'test.request.auth.session-hardening',
+                package: 'yezzmedia/test-package',
+                domain: 'auth',
+                control: 'session_hardening',
+                scope: 'ops-panel',
+                requestedLevel: 'recommended',
+                requestedEnforcementMode: 'observe_only',
+                description: 'Test request for governance memoization.',
+            ),
+        ]));
+
+    $securityRequirements->shouldReceive('all')
+        ->once()
+        ->andReturn(collect([
+            new SecurityRequirementDefinition(
+                key: 'test.auth.session-hardening',
+                package: 'yezzmedia/test-package',
+                domain: 'auth',
+                control: 'session_hardening',
+                level: 'recommended',
+                scope: 'ops-panel',
+                description: 'Test requirement for governance memoization.',
+                enforcementMode: 'observe_only',
+            ),
+        ]));
+
+    $manager = new OpsSecurityManager(
+        resolvers: [],
+        summaryBuilder: app(SecurityPostureSummaryBuilder::class),
+        securityRequests: $securityRequests,
+        securityRequirements: $securityRequirements,
+        requestBroker: app(SecurityRequestBroker::class),
+        cacheFactory: app(Factory::class),
+        cacheEnabled: false,
+        cacheStore: null,
+        cacheTtl: 300,
+        visibilityDisplayLimit: 25,
+    );
+
+    $first = $manager->governance();
+    $control = $manager->governanceControl('auth', 'session_hardening', 'ops-panel');
+    $second = $manager->governance();
+
+    expect($first)
+        ->toBeInstanceOf(SecurityGovernanceSummary::class)
+        ->and($second)->toBe($first)
+        ->and($control)->not->toBeNull()
+        ->and($control->verificationStatus)->toBe('observed')
+        ->and($control->verificationSummary)->toContain('no runtime verification strategy is registered yet');
 });

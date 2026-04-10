@@ -21,6 +21,7 @@ use YezzMedia\OpsSecurity\Data\SecurityPostureSummary;
 use YezzMedia\OpsSecurity\Data\SecurityVisibilitySummary;
 use YezzMedia\OpsSecurity\Enums\SecurityDomain;
 use YezzMedia\OpsSecurity\Enums\SecurityPostureStatus;
+use YezzMedia\OpsSecurity\Support\DatabaseSecurityRequestBroker;
 use YezzMedia\OpsSecurity\Support\SecurityPostureSummaryBuilder;
 
 class OpsSecurityManager
@@ -28,6 +29,8 @@ class OpsSecurityManager
     private const CACHE_KEY = 'ops-security:posture';
 
     private ?SecurityPostureSummary $memo = null;
+
+    private ?SecurityGovernanceSummary $governanceMemo = null;
 
     private ?CacheRepository $cache = null;
 
@@ -79,6 +82,7 @@ class OpsSecurityManager
     public function refresh(): SecurityPostureSummary
     {
         $this->memo = null;
+        $this->governanceMemo = null;
 
         if ($this->cacheEnabled) {
             $this->resolveCache()->forget(self::CACHE_KEY);
@@ -132,6 +136,10 @@ class OpsSecurityManager
 
     public function governance(): SecurityGovernanceSummary
     {
+        if ($this->governanceMemo !== null) {
+            return $this->governanceMemo;
+        }
+
         /** @var array<int, SecurityRequestDefinition> $requests */
         $requests = $this->securityRequests
             ->all()
@@ -193,7 +201,7 @@ class OpsSecurityManager
             ->values()
             ->all();
 
-        return new SecurityGovernanceSummary(
+        return $this->governanceMemo = new SecurityGovernanceSummary(
             requestsByPackage: $requestsByPackage,
             requirementsByPackage: $requirementsByPackage,
             effectiveControls: $effectiveControls,
@@ -222,6 +230,10 @@ class OpsSecurityManager
 
     public function visibility(): SecurityVisibilitySummary
     {
+        if ($this->requestBroker instanceof DatabaseSecurityRequestBroker) {
+            return $this->requestBroker->visibilitySummary($this->visibilityDisplayLimit);
+        }
+
         $records = $this->visibilityRecords();
         $requests = $records['requests'];
         $decisions = $records['decisions'];
@@ -560,17 +572,24 @@ class OpsSecurityManager
             ];
         }
 
-        $records = $this->visibilityRecords();
+        if ($this->requestBroker instanceof DatabaseSecurityRequestBroker) {
+            $counts = $this->requestBroker->visibilityCountsFor('privileged_mfa', 'super-admin');
 
-        $runtimeEvidenceCount = count(array_filter(
-            $records['runtimeEvidence'],
-            static fn ($evidence): bool => $evidence->control === 'privileged_mfa' && $evidence->scope === 'super-admin',
-        ));
+            $runtimeEvidenceCount = $counts['runtimeEvidence'];
+            $requestCount = $counts['requests'];
+        } else {
+            $records = $this->visibilityRecords();
 
-        $requestCount = count(array_filter(
-            $records['requests'],
-            static fn ($request): bool => $request->control === 'privileged_mfa' && $request->scope === 'super-admin',
-        ));
+            $runtimeEvidenceCount = count(array_filter(
+                $records['runtimeEvidence'],
+                static fn ($evidence): bool => $evidence->control === 'privileged_mfa' && $evidence->scope === 'super-admin',
+            ));
+
+            $requestCount = count(array_filter(
+                $records['requests'],
+                static fn ($request): bool => $request->control === 'privileged_mfa' && $request->scope === 'super-admin',
+            ));
+        }
 
         if ($runtimeEvidenceCount > 0) {
             return [
