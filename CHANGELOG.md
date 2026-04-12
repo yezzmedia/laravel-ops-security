@@ -11,6 +11,17 @@ The format is based on Keep a Changelog and this package follows Semantic Versio
 - package README documenting the implemented posture, governance, visibility, audit, and operator-page surface
 - package changelog for ongoing release tracking
 
+## [0.1.1] - 2026-04-12
+
+### Fixed
+
+- required `yezzmedia/laravel-foundation:^0.1.1` so the published security package can rely on the shipped security-governance contracts at install time
+- corrected the `DoctorCheck` and `InstallStep` imports to the implemented Foundation namespaces
+
+### Documentation
+
+- recorded the release-compatibility hotfix for package consumers
+
 ## [0.1.0] - 2026-04-08
 
 ### Added
