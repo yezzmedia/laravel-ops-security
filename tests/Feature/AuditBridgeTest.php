@@ -13,9 +13,17 @@ use YezzMedia\OpsSecurity\Enums\SecurityPostureStatus;
 use YezzMedia\OpsSecurity\Events\SecurityPostureRefreshed;
 
 it('binds the null audit writer by default', function (): void {
+    expect(config('ops-security.audit.driver'))->toBeNull();
+
     $writer = app(SecurityAuditWriter::class);
 
     expect($writer)->toBeInstanceOf(NullSecurityAuditWriter::class);
+});
+
+it('ships a null security audit driver by default in package config', function (): void {
+    $config = require dirname(__DIR__, 2).'/config/ops-security.php';
+
+    expect($config['audit']['driver'])->toBeNull();
 });
 
 it('null audit writer accepts events without error', function (): void {
