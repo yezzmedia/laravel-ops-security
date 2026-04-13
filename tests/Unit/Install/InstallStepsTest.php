@@ -44,6 +44,26 @@ function fakeOpsSecurityVisibilityStoreSetup(
     };
 }
 
+it('forgets cached visibility tables after running migrations', function (): void {
+    $setup = new class extends OpsSecurityVisibilityStoreSetup
+    {
+        protected function callMigrations(): void {}
+    };
+
+    $reflection = new ReflectionClass(OpsSecurityVisibilityStoreSetup::class);
+    $property = $reflection->getProperty('visibilityTables');
+    $property->setAccessible(true);
+    $property->setValue($setup, [
+        'ops_security_requests' => false,
+        'ops_security_decisions' => false,
+        'ops_security_runtime_evidence' => false,
+    ]);
+
+    $setup->runMigrations();
+
+    expect($property->getValue($setup))->toBeNull();
+});
+
 it('requires explicit migration permission before ensuring the visibility store', function (): void {
     $setup = fakeOpsSecurityVisibilityStoreSetup(ready: false);
     $step = new EnsureOpsSecurityVisibilityStoreReadyInstallStep($setup);

@@ -37,6 +37,18 @@ class OpsSecurityVisibilityStoreSetup
 
     public function runMigrations(): void
     {
+        $this->callMigrations();
+
+        $this->forgetVisibilityTables();
+    }
+
+    public function forgetVisibilityTables(): void
+    {
+        $this->visibilityTables = null;
+    }
+
+    protected function callMigrations(): void
+    {
         Artisan::call('migrate', [
             '--path' => $this->migrationPath(),
             '--realpath' => true,
