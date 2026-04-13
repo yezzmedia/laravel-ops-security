@@ -48,6 +48,13 @@ abstract class OpsSecurityTestCase extends FoundationTestCase
         $app['config']->set('ops-security.audit.driver', null);
     }
 
+    protected function tearDown(): void
+    {
+        $this->forgetPublishedConfig();
+
+        parent::tearDown();
+    }
+
     private function ensureVisibilityTablesExist(): void
     {
         if (! Schema::hasTable('ops_security_requests')) {
@@ -107,6 +114,15 @@ abstract class OpsSecurityTestCase extends FoundationTestCase
                 $table->timestamp('recorded_at')->index();
                 $table->timestamps();
             });
+        }
+    }
+
+    private function forgetPublishedConfig(): void
+    {
+        $path = config_path('ops-security.php');
+
+        if (is_file($path)) {
+            @unlink($path);
         }
     }
 }

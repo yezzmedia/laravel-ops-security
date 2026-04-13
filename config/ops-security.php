@@ -101,7 +101,7 @@ return [
     */
     'audit' => [
         'enabled' => true,
-        'driver' => env('OPS_SECURITY_AUDIT_DRIVER', 'activitylog'),
+        'driver' => env('OPS_SECURITY_AUDIT_DRIVER'),
         'log_name' => 'ops-security',
     ],
 
