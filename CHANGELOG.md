@@ -6,6 +6,13 @@ The format is based on Keep a Changelog and this package follows Semantic Versio
 
 ## [Unreleased]
 
+## [0.1.2] - 2026-04-13
+
+### Fixed
+
+- cleared the cached visibility-table snapshot after running security visibility migrations so install readiness checks observe the newly created tables
+- kept Basecamp and other package installs from failing with a false "visibility store is still not ready" error immediately after migrations
+
 ### Added
 
 - package README documenting the implemented posture, governance, visibility, audit, and operator-page surface
