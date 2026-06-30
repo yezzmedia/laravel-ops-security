@@ -272,9 +272,9 @@ it('reuses a single visibility snapshot across governance and visibility reads',
         ->and($queries->filter(fn (string $query): bool => str_contains($query, 'from "ops_security_requests"') && str_contains($query, 'limit 25'))->count())->toBe(1)
         ->and($queries->filter(fn (string $query): bool => str_contains($query, 'from "ops_security_decisions"') && str_contains($query, 'limit 25'))->count())->toBe(1)
         ->and($queries->filter(fn (string $query): bool => str_contains($query, 'from "ops_security_runtime_evidence"') && str_contains($query, 'limit 25'))->count())->toBe(1)
-        ->and($queries->filter(fn (string $query): bool => str_contains($query, 'count(*) as aggregate') && str_contains($query, 'from "ops_security_requests"'))->count())->toBe(2)
-        ->and($queries->filter(fn (string $query): bool => str_contains($query, 'count(*) as aggregate') && str_contains($query, 'from "ops_security_decisions"'))->count())->toBe(2)
-        ->and($queries->filter(fn (string $query): bool => str_contains($query, 'count(*) as aggregate') && str_contains($query, 'from "ops_security_runtime_evidence"'))->count())->toBe(2);
+        ->and($queries->filter(fn (string $query): bool => str_contains($query, 'count(*) as "aggregate"') && str_contains($query, 'from "ops_security_requests"'))->count())->toBe(2)
+        ->and($queries->filter(fn (string $query): bool => str_contains($query, 'count(*) as "aggregate"') && str_contains($query, 'from "ops_security_decisions"'))->count())->toBe(2)
+        ->and($queries->filter(fn (string $query): bool => str_contains($query, 'count(*) as "aggregate"') && str_contains($query, 'from "ops_security_runtime_evidence"'))->count())->toBe(2);
 });
 
 it('loads limited visibility rows while preserving full counts', function (): void {
@@ -315,9 +315,9 @@ it('loads limited visibility rows while preserving full counts', function (): vo
         ->and($queries->filter(fn (string $query): bool => str_contains($query, 'from "ops_security_requests"') && str_contains($query, 'limit 10'))->count())->toBe(1)
         ->and($queries->filter(fn (string $query): bool => str_contains($query, 'from "ops_security_decisions"') && str_contains($query, 'limit 10'))->count())->toBe(1)
         ->and($queries->filter(fn (string $query): bool => str_contains($query, 'from "ops_security_runtime_evidence"') && str_contains($query, 'limit 10'))->count())->toBe(1)
-        ->and($queries->filter(fn (string $query): bool => str_contains($query, 'count(*) as aggregate') && str_contains($query, 'from "ops_security_requests"'))->count())->toBe(1)
-        ->and($queries->filter(fn (string $query): bool => str_contains($query, 'count(*) as aggregate') && str_contains($query, 'from "ops_security_decisions"'))->count())->toBe(2)
-        ->and($queries->filter(fn (string $query): bool => str_contains($query, 'count(*) as aggregate') && str_contains($query, 'from "ops_security_runtime_evidence"'))->count())->toBe(1);
+        ->and($queries->filter(fn (string $query): bool => str_contains($query, 'count(*) as "aggregate"') && str_contains($query, 'from "ops_security_requests"'))->count())->toBe(1)
+        ->and($queries->filter(fn (string $query): bool => str_contains($query, 'count(*) as "aggregate"') && str_contains($query, 'from "ops_security_decisions"'))->count())->toBe(2)
+        ->and($queries->filter(fn (string $query): bool => str_contains($query, 'count(*) as "aggregate"') && str_contains($query, 'from "ops_security_runtime_evidence"'))->count())->toBe(1);
 });
 
 it('verifies privileged mfa through filtered visibility counts instead of full history loads', function (): void {
@@ -366,8 +366,8 @@ it('verifies privileged mfa through filtered visibility counts instead of full h
         ->and($control->verificationStatus)->toBe('verified')
         ->and($queries->filter(fn (string $query): bool => str_contains($query, 'from "ops_security_requests"') && str_contains($query, 'limit'))->count())->toBe(0)
         ->and($queries->filter(fn (string $query): bool => str_contains($query, 'from "ops_security_runtime_evidence"') && str_contains($query, 'limit'))->count())->toBe(0)
-        ->and($queries->filter(fn (string $query): bool => str_contains($query, 'count(*) as aggregate') && str_contains($query, 'from "ops_security_requests"') && str_contains($query, '"control" = ?') && str_contains($query, '"scope" = ?'))->count())->toBe(1)
-        ->and($queries->filter(fn (string $query): bool => str_contains($query, 'count(*) as aggregate') && str_contains($query, 'from "ops_security_runtime_evidence"') && str_contains($query, '"control" = ?') && str_contains($query, '"scope" = ?'))->count())->toBe(1);
+        ->and($queries->filter(fn (string $query): bool => str_contains($query, 'count(*) as "aggregate"') && str_contains($query, 'from "ops_security_requests"') && str_contains($query, '"control" = ?') && str_contains($query, '"scope" = ?'))->count())->toBe(1)
+        ->and($queries->filter(fn (string $query): bool => str_contains($query, 'count(*) as "aggregate"') && str_contains($query, 'from "ops_security_runtime_evidence"') && str_contains($query, '"control" = ?') && str_contains($query, '"scope" = ?'))->count())->toBe(1);
 });
 
 it('memoizes governance results across repeated governance reads', function (): void {

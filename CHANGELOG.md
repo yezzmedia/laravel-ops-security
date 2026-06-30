@@ -6,6 +6,12 @@ The format is based on Keep a Changelog and this package follows Semantic Versio
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-06-30
+
+### Changed
+
+- Bumped minimum `yezzmedia/laravel-foundation` dependency to `^0.2`
+
 ## [0.1.3] - 2026-04-13
 
 ### Fixed
