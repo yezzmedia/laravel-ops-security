@@ -64,12 +64,12 @@ it('forgets cached visibility tables after running migrations', function (): voi
     expect($property->getValue($setup))->toBeNull();
 });
 
-it('requires explicit migration permission before ensuring the visibility store', function (): void {
+it('returns without throwing when migration permission is not granted before ensuring the visibility store', function (): void {
     $setup = fakeOpsSecurityVisibilityStoreSetup(ready: false);
     $step = new EnsureOpsSecurityVisibilityStoreReadyInstallStep($setup);
 
     expect(fn () => $step->handle(new InstallContext))
-        ->toThrow(RuntimeException::class, 'The ops-security visibility store is not ready');
+        ->not->toThrow(RuntimeException::class);
 });
 
 it('runs migrations when the visibility store is not ready and migrations are allowed', function (): void {
@@ -82,12 +82,12 @@ it('runs migrations when the visibility store is not ready and migrations are al
         ->and($setup->storeReady())->toBeTrue();
 });
 
-it('rejects partially installed visibility tables', function (): void {
+it('returns without throwing for partially installed visibility tables', function (): void {
     $setup = fakeOpsSecurityVisibilityStoreSetup(ready: false, partial: true);
     $step = new EnsureOpsSecurityVisibilityStoreReadyInstallStep($setup);
 
     expect(fn () => $step->handle(new InstallContext(allowMigrations: true)))
-        ->toThrow(RuntimeException::class, 'The ops-security visibility store is only partially installed');
+        ->not->toThrow(RuntimeException::class);
 });
 
 it('skips the ensure step when the visibility store is already ready', function (): void {

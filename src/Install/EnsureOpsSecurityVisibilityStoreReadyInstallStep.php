@@ -4,12 +4,12 @@ declare(strict_types=1);
 
 namespace YezzMedia\OpsSecurity\Install;
 
-use RuntimeException;
 use YezzMedia\Foundation\Data\InstallContext;
 use YezzMedia\Foundation\Install\InstallStep;
+use YezzMedia\Foundation\Install\OptionalInstallStep;
 use YezzMedia\OpsSecurity\Support\OpsSecurityVisibilityStoreSetup;
 
-final class EnsureOpsSecurityVisibilityStoreReadyInstallStep implements InstallStep
+final class EnsureOpsSecurityVisibilityStoreReadyInstallStep implements InstallStep, OptionalInstallStep
 {
     public function __construct(private readonly OpsSecurityVisibilityStoreSetup $setup) {}
 
@@ -36,23 +36,37 @@ final class EnsureOpsSecurityVisibilityStoreReadyInstallStep implements InstallS
     public function handle(InstallContext $context): void
     {
         if ($this->setup->hasPartialTables()) {
-            throw new RuntimeException(
-                'The ops-security visibility store is only partially installed. '
-                .'Repair the database state before rerunning the install flow.'
+            fwrite(
+                STDERR,
+                "\n  \033[33;1mWARNING\033[39;22m  The ops-security visibility store is only partially installed. "
+                .'Repair the database state before rerunning the install flow.'."\n\n"
             );
+
+            return;
         }
 
         if (! $context->allowMigrations) {
-            throw new RuntimeException(
-                'The ops-security visibility store is not ready. '
-                .'Run `php artisan migrate` or rerun the install command with `--migrate`.'
+            fwrite(
+                STDERR,
+                "\n  \033[33;1mWARNING\033[39;22m  The ops-security visibility store is not ready. "
+                .'Run `php artisan migrate` or rerun the install command with `--migrate`.'."\n\n"
             );
+
+            return;
         }
 
         $this->setup->runMigrations();
 
         if (! $this->setup->storeReady()) {
-            throw new RuntimeException('The ops-security visibility store is still not ready after running migrations.');
+            fwrite(
+                STDERR,
+                "\n  \033[33;1mWARNING\033[39;22m  The ops-security visibility store is still not ready after running migrations.\n\n"
+            );
         }
+    }
+
+    public function isOptional(): bool
+    {
+        return true;
     }
 }
