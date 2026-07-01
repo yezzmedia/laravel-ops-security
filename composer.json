@@ -1,7 +1,7 @@
 {
     "name": "yezzmedia/laravel-ops-security",
     "description": "SSL, SSH, secret, and configuration security posture monitoring for Laravel applications.",
-    "version": "0.2.2",
+    "version": "0.2.3",
     "license": "proprietary",
     "type": "library",
     "require": {
